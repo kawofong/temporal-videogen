@@ -1,0 +1,171 @@
+"""
+A video generation workflow.
+"""
+
+import asyncio
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
+from pathlib import Path
+
+from temporalio import workflow
+from temporalio.client import Client
+from temporalio.common import RetryPolicy
+from temporalio.contrib.pydantic import pydantic_data_converter
+from temporalio.worker import Worker
+
+with workflow.unsafe.imports_passed_through():
+    from pydantic import BaseModel
+
+    from workflows.videogen.activities import (
+        CreateScenesInput,
+        GenerateVideoForSceneInput,
+        GoogleCloudActivities,
+        MergeVideosInput,
+        UploadFileInput,
+        VideoGenerationActivities,
+        create_video_directory,
+    )
+
+
+class VideoGenerationWorkflowInput(BaseModel):
+    """
+    Video Generation Workflow Input.
+    """
+
+    prompt: str
+
+
+class VideoGenerationWorkflowOutput(BaseModel):
+    """
+    Video Generation Workflow Output.
+    """
+
+    video_path: str
+
+
+@workflow.defn
+class VideoGenerationWorkflow:
+    """
+    Video Generation Workflow.
+    """
+
+    @workflow.run
+    async def run(
+        self, arg: VideoGenerationWorkflowInput
+    ) -> VideoGenerationWorkflowOutput:
+        """
+        Main Workflow function.
+        """
+        workflow.logger.info("Running workflow with parameter %s", arg)
+
+        # Expand user prompt into movie scenes.
+        scenes = await workflow.execute_activity_method(
+            VideoGenerationActivities.create_scenes,
+            CreateScenesInput(prompt=arg.prompt),
+            start_to_close_timeout=timedelta(seconds=30),
+        )
+        workflow.logger.info("Scene development completed. scene_count=%s", len(scenes))
+
+        # Create a staging directory to store the videos.
+        video_dir = await workflow.execute_activity(
+            create_video_directory,
+            start_to_close_timeout=timedelta(seconds=5),
+        )
+        workflow.logger.info("Staging directory created. path=%s", video_dir)
+
+        previous_video_path: Path | None = None
+        scene_video_map: dict[int, Path] = {}
+        # For each scene, generate a video. If there is a previous scene,
+        # use the last frame of the previous video as a reference image for VGM.
+        for scene in scenes:
+            video_path: Path = await workflow.execute_activity_method(
+                VideoGenerationActivities.generate_video_for_scene,
+                GenerateVideoForSceneInput(
+                    current_scene=scene,
+                    previous_video_path=previous_video_path,
+                    staging_directory=video_dir,
+                    output_path=video_dir / f"scene_{scene.sequence_number}.mp4",
+                ),
+                start_to_close_timeout=timedelta(minutes=2),
+                retry_policy=RetryPolicy(
+                    initial_interval=timedelta(seconds=10),
+                    maximum_interval=timedelta(minutes=2),
+                    backoff_coefficient=2.0,
+                ),
+            )
+            previous_video_path = video_path
+            scene_video_map[scene.sequence_number] = video_path
+            workflow.logger.info("Scene video generated. video_path=%s", video_path)
+
+        # Combine the video scenes into a single video.
+        final_video_path = await workflow.execute_activity(
+            VideoGenerationActivities.merge_videos,
+            MergeVideosInput(
+                video_paths=list(scene_video_map.values()),
+                output_path=video_dir / "final_video.mp4",
+            ),
+        )
+        workflow.logger.info("Final video generated. video_path=%s", final_video_path)
+
+        # Upload the videos to GCS.
+        await workflow.execute_activity(
+            GoogleCloudActivities.upload_file,
+            UploadFileInput(
+                bucket_name="kawo-temporal-videos-bucket",
+                source_path=final_video_path,
+                destination_path="final_video.mp4",
+            ),
+        )
+        workflow.logger.info(
+            "Final video uploaded to GCS. bucket=%s, path=%s",
+            "kawo-temporal-videos-bucket",
+            "final_video.mp4",
+        )
+
+        return VideoGenerationWorkflowOutput(video_path="final_video.mp4")
+
+
+async def main():
+    """
+    Main function.
+    """
+    import logging
+
+    logging.basicConfig(level=logging.INFO)
+
+    # Start client
+    client = await Client.connect(
+        "localhost:7233",
+        data_converter=pydantic_data_converter,
+    )
+
+    TASK_QUEUE = "video-gen-task-queue"
+    # Run a worker for the workflow
+    video_generation_activities = VideoGenerationActivities()
+    google_cloud_activities = GoogleCloudActivities()
+    async with Worker(
+        client,
+        task_queue=TASK_QUEUE,
+        workflows=[VideoGenerationWorkflow],
+        activities=[
+            video_generation_activities.create_scenes,
+            video_generation_activities.generate_video_for_scene,
+            google_cloud_activities.upload_file,
+            create_video_directory,
+        ],
+        activity_executor=ThreadPoolExecutor(max_workers=5),
+    ):
+        result = await client.execute_workflow(
+            VideoGenerationWorkflow.run,
+            VideoGenerationWorkflowInput(
+                prompt="A dog chases a person running in a park."
+            ),
+            id=f"video-gen-workflow-{uuid.uuid4()}",
+            task_queue=TASK_QUEUE,
+        )
+        print(f"Result: {result}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
