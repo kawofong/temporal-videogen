@@ -1,0 +1,2 @@
+# Reference: https://ai.google.dev/gemini-api/docs/api-key
+export GOOGLE_API_KEY=<your-google-api-key>

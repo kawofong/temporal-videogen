@@ -27,6 +27,12 @@ to install Python dependencies:
     > Your Google Cloud credentials should be cached to your local file system.
     > Hence, you should not have to authenticate every time you are running this solution.
 
+1. Copy `.envrc.example` and populate values:
+
+    ```bash
+    cp .envrc.example .envrc
+    ```
+
 1. Start Temporal locally.
 
     ```bash
@@ -38,3 +44,10 @@ to install Python dependencies:
     ```bash
     uv run -m workflows.videogen.videogen
     ```
+
+## TODO
+
+* Generate test videos (e.g. rainbow color)
+* Generate tests that mock activities to test workflows end-to-end
+* Write some tests (goal: > 80% test coverage)
+* Remove test functions from Python files (like `gcp.py`)
