@@ -121,6 +121,7 @@ class VideoGenerationWorkflow:
                 video_paths=list(scene_video_map.values()),
                 output_path=video_dir / arg.output_video_name,
             ),
+            start_to_close_timeout=timedelta(seconds=30),
         )
         workflow.logger.info("Final video generated. video_path=%s", final_video_path)
 
@@ -136,6 +137,7 @@ class VideoGenerationWorkflow:
                 source_path=final_video_path,
                 destination_path=destination_path,
             ),
+            start_to_close_timeout=timedelta(seconds=30),
         )
         workflow.logger.info(
             "Final video uploaded to GCS. bucket=%s, path=%s",
@@ -173,6 +175,7 @@ async def main():
         activities=[
             video_generation_activities.create_scenes,
             video_generation_activities.generate_video_for_scene,
+            video_generation_activities.merge_videos,
             google_cloud_activities.upload_file,
             create_video_directory,
         ],
