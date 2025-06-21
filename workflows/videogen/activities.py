@@ -65,6 +65,8 @@ class VideoGenerationActivities:
 
     def __init__(self):
         self._google_api_key = video_gen_settings.GOOGLE_API_KEY
+        self._llm = GoogleGemini(api_key=self._google_api_key)
+        self._vgm = GoogleVeo2(api_key=self._google_api_key)
 
     @activity.defn
     async def create_scenes(self, arg: CreateScenesInput) -> list[Scene]:
@@ -73,7 +75,6 @@ class VideoGenerationActivities:
         """
         activity.logger.info("Creating scenes from prompt. arg=%s", arg)
 
-        llm = GoogleGemini(api_key=self._google_api_key)
         llm_prompt = f"""
 You are a creative AI agent that transforms user input into cinematic movie scenes. Your task is to take any concept, story, or idea and convert it into a compelling visual narrative with dramatic flair and artistic vision.
 
@@ -100,11 +101,63 @@ Transform the user's input into something unexpectedly cinematic, whether it's m
 User Input: {arg.prompt}
 """
 
-        response: list[Scene] = await llm.generate_content(
+        response: list[Scene] = await self._llm.generate_content(
             prompt=llm_prompt,
             response_schema=list[Scene],
         )
         return response
+
+    @activity.defn
+    async def generate_vgm_prompt(self, scene: Scene) -> str:
+        """
+        Generate an optimized VGM prompt for a scene.
+        """
+        activity.logger.info("Generating a VGM prompt for the scene. scene=%s", scene)
+        llm_prompt = f"""
+As a Veo 2 video generation agent, your goal is to create compelling and high-quality video clips based on detailed scene descriptions. You will receive specific scene parameters and should interpret them to craft a vivid and precise video generation prompt for Veo 2.
+
+**Prompt Structure for Veo 2:**
+
+Your output should be a single, cohesive prompt that Veo 2 can directly process.
+
+**Parameters to Extract and Interpret from Scene Information:**
+
+* **VISUAL_DESCRIPTION:** This is the core of the prompt. Translate the `description` field into a highly descriptive and evocative visual narrative. Focus on:
+    * **Subjects:** What is present? (e.g., "bare feet," "dancers' lower bodies")
+    * **Actions:** What are they doing? (e.g., "kicking up golden dust," "moving rhythmically," "spin and twirl")
+    * **Key Details:** Emphasize unique visual elements (e.g., "golden dust," "vibrant, flowing fabrics").
+    * **Mood/Atmosphere:** Convey the feeling (e.g., "powerful," "increasing energy and freedom").
+    * **Shot Type:** Integrate the `camera_angle` as a descriptive element within the visual description, especially for initial framing (e.g., "An extreme close-up...").
+
+* **CAMERA_MOVEMENT :** Directly translate the `camera_angle` information. Use Veo 2 compatible terms:
+    * `tracking shot`
+    * `tilt up`
+    * `pan left/right`
+    * `zoom in/out`
+    * `dolly in/out`
+    * Combine multiple movements if described.
+
+* **LIGHTING_STYLE :** Directly translate or interpret the `lighting` field. Be specific and use evocative terms:
+    * `golden hour backlighting`
+    * `prominent lens flares`
+    * `long, dynamic shadows`
+    * `soft ambient light`
+    * `harsh industrial light`
+
+**Optimize Prompt for Veo 2**
+
+Use the parameters above to generate an optimized prompt for Veo 2.
+
+**Input Scene:**
+
+{scene}
+
+**Optimized Veo 2 Prompt:**
+"""
+        optimized_vgm_prompt: str = await self._llm.generate_content(
+            prompt=llm_prompt,
+        )
+        return optimized_vgm_prompt
 
     @activity.defn
     async def generate_video_for_scene(self, arg: GenerateVideoForSceneInput) -> Path:
@@ -112,9 +165,12 @@ User Input: {arg.prompt}
         Generate a video for a scene.
         """
         activity.logger.info("Generating a video for the scene. arg=%s", arg)
-        vgm = GoogleVeo2(api_key=self._google_api_key)
-        vgm_prompt = f"""
-{arg.current_scene.description}. The camera uses {arg.current_scene.camera_angle}. The lighting is {arg.current_scene.lighting}.
+        vgm_prompt = arg.current_scene.vgm_prompt
+        if vgm_prompt is None:
+            vgm_prompt = f"""
+{arg.current_scene.description}.
+The camera uses {arg.current_scene.camera_angle}.
+The lighting is {arg.current_scene.lighting}.
 """
         # Save the last frame of the previous video as a reference image for VGM.
         if arg.previous_video_path is not None:
@@ -122,13 +178,13 @@ User Input: {arg.prompt}
             video = VideoFileClip(arg.previous_video_path)
             image_path = (
                 arg.staging_directory
-                / f"scene_{arg.current_scene.sequence_number}_last_frame.png"
+                / f"scene_{int(arg.current_scene.sequence_number-1)}_last_frame.png"
             )
             video.save_frame(image_path, t=float(video.duration - 0.01))
         else:
             image_path = None
 
-        output_path = await vgm.generate_video(
+        output_path = await self._vgm.generate_video(
             prompt=vgm_prompt,
             output_path=arg.output_path,
             image_path=image_path,

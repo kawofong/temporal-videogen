@@ -8,15 +8,13 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from pathlib import Path
 
-from pydantic import Field
 from temporalio import workflow
 from temporalio.client import Client
-from temporalio.common import RetryPolicy
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.worker import Worker
 
 with workflow.unsafe.imports_passed_through():
-    from pydantic import BaseModel
+    from pydantic import BaseModel, Field
 
     from workflows.videogen.activities import (
         CreateScenesInput,
@@ -95,6 +93,12 @@ class VideoGenerationWorkflow:
         # For each scene, generate a video. If there is a previous scene,
         # use the last frame of the previous video as a reference image for VGM.
         for scene in scenes:
+            vgm_prompt: str = await workflow.execute_activity_method(
+                VideoGenerationActivities.generate_vgm_prompt,
+                scene,
+                start_to_close_timeout=timedelta(seconds=30),
+            )
+            scene.vgm_prompt = vgm_prompt
             video_path: Path = await workflow.execute_activity_method(
                 VideoGenerationActivities.generate_video_for_scene,
                 GenerateVideoForSceneInput(
@@ -104,11 +108,6 @@ class VideoGenerationWorkflow:
                     output_path=video_dir / f"scene_{scene.sequence_number}.mp4",
                 ),
                 start_to_close_timeout=timedelta(minutes=2),
-                retry_policy=RetryPolicy(
-                    initial_interval=timedelta(seconds=10),
-                    maximum_interval=timedelta(minutes=2),
-                    backoff_coefficient=2.0,
-                ),
             )
             previous_video_path = video_path
             scene_video_map[scene.sequence_number] = video_path
@@ -174,6 +173,7 @@ async def main():
         workflows=[VideoGenerationWorkflow],
         activities=[
             video_generation_activities.create_scenes,
+            video_generation_activities.generate_vgm_prompt,
             video_generation_activities.generate_video_for_scene,
             video_generation_activities.merge_videos,
             google_cloud_activities.upload_file,

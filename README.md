@@ -47,6 +47,7 @@ to install Python dependencies:
 
 ## TODO
 
+* stage videos in GCS
 * Generate test videos (e.g. rainbow color)
 * Generate tests that mock activities to test workflows end-to-end
 * Write some tests (goal: > 80% test coverage)
