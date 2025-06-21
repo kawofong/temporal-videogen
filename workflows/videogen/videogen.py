@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from pathlib import Path
 
+from pydantic import Field
 from temporalio import workflow
 from temporalio.client import Client
 from temporalio.common import RetryPolicy
@@ -33,7 +34,14 @@ class VideoGenerationWorkflowInput(BaseModel):
     Video Generation Workflow Input.
     """
 
-    prompt: str
+    user_prompt: str = Field(description="The user prompt to generate a video for.")
+    video_name: str = Field(
+        default="final_video.mp4",
+        description=(
+            "The name of the video to generate."
+            "This will be used as the destination path in GCS."
+        ),
+    )
 
 
 class VideoGenerationWorkflowOutput(BaseModel):
@@ -41,7 +49,9 @@ class VideoGenerationWorkflowOutput(BaseModel):
     Video Generation Workflow Output.
     """
 
-    video_path: str
+    video_path: str = Field(
+        description="The path of the video in GCS.",
+    )
 
 
 @workflow.defn
@@ -62,7 +72,7 @@ class VideoGenerationWorkflow:
         # Expand user prompt into movie scenes.
         scenes = await workflow.execute_activity_method(
             VideoGenerationActivities.create_scenes,
-            CreateScenesInput(prompt=arg.prompt),
+            CreateScenesInput(prompt=arg.user_prompt),
             start_to_close_timeout=timedelta(seconds=30),
         )
         workflow.logger.info("Scene development completed. scene_count=%s", len(scenes))
@@ -103,7 +113,7 @@ class VideoGenerationWorkflow:
             VideoGenerationActivities.merge_videos,
             MergeVideosInput(
                 video_paths=list(scene_video_map.values()),
-                output_path=video_dir / "final_video.mp4",
+                output_path=video_dir / arg.video_name,
             ),
         )
         workflow.logger.info("Final video generated. video_path=%s", final_video_path)
@@ -114,16 +124,18 @@ class VideoGenerationWorkflow:
             UploadFileInput(
                 bucket_name="kawo-temporal-videos-bucket",
                 source_path=final_video_path,
-                destination_path="final_video.mp4",
+                destination_path=arg.video_name,
             ),
         )
         workflow.logger.info(
             "Final video uploaded to GCS. bucket=%s, path=%s",
             "kawo-temporal-videos-bucket",
-            "final_video.mp4",
+            arg.video_name,
         )
 
-        return VideoGenerationWorkflowOutput(video_path="final_video.mp4")
+        return VideoGenerationWorkflowOutput(
+            video_path=f"gs://kawo-temporal-videos-bucket/{arg.video_name}"
+        )
 
 
 async def main():
@@ -159,7 +171,7 @@ async def main():
         result = await client.execute_workflow(
             VideoGenerationWorkflow.run,
             VideoGenerationWorkflowInput(
-                prompt="A dog chases a person running in a park."
+                user_prompt="A dog chases a person running in a park."
             ),
             id=f"video-gen-workflow-{uuid.uuid4()}",
             task_queue=TASK_QUEUE,
