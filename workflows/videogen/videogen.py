@@ -27,6 +27,7 @@ with workflow.unsafe.imports_passed_through():
         VideoGenerationActivities,
         create_video_directory,
     )
+    from workflows.videogen.settings import video_gen_settings
 
 
 class VideoGenerationWorkflowInput(BaseModel):
@@ -35,7 +36,7 @@ class VideoGenerationWorkflowInput(BaseModel):
     """
 
     user_prompt: str = Field(description="The user prompt to generate a video for.")
-    video_name: str = Field(
+    output_video_name: str = Field(
         default="final_video.mp4",
         description=(
             "The name of the video to generate."
@@ -67,7 +68,12 @@ class VideoGenerationWorkflow:
         """
         Main Workflow function.
         """
-        workflow.logger.info("Running workflow with parameter %s", arg)
+        workflow_start_time = workflow.now()
+        workflow.logger.info(
+            "Running workflow. input=%s. start_time=%s",
+            arg,
+            workflow_start_time,
+        )
 
         # Expand user prompt into movie scenes.
         scenes = await workflow.execute_activity_method(
@@ -113,28 +119,32 @@ class VideoGenerationWorkflow:
             VideoGenerationActivities.merge_videos,
             MergeVideosInput(
                 video_paths=list(scene_video_map.values()),
-                output_path=video_dir / arg.video_name,
+                output_path=video_dir / arg.output_video_name,
             ),
         )
         workflow.logger.info("Final video generated. video_path=%s", final_video_path)
 
         # Upload the videos to GCS.
+        gcs_bucket = video_gen_settings.GCS_BUCKET_NAME
+        destination_path = (
+            f"{workflow_start_time.strftime('%Y%m%d_%H%M%S')}/{arg.output_video_name}"
+        )
         await workflow.execute_activity(
             GoogleCloudActivities.upload_file,
             UploadFileInput(
-                bucket_name="kawo-temporal-videos-bucket",
+                bucket_name=gcs_bucket,
                 source_path=final_video_path,
-                destination_path=arg.video_name,
+                destination_path=destination_path,
             ),
         )
         workflow.logger.info(
             "Final video uploaded to GCS. bucket=%s, path=%s",
-            "kawo-temporal-videos-bucket",
-            arg.video_name,
+            gcs_bucket,
+            arg.output_video_name,
         )
 
         return VideoGenerationWorkflowOutput(
-            video_path=f"gs://kawo-temporal-videos-bucket/{arg.video_name}"
+            video_path=f"gs://{gcs_bucket}/{destination_path}"
         )
 
 

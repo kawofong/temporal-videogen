@@ -2,7 +2,6 @@
 Video generation activities.
 """
 
-import os
 import tempfile
 from pathlib import Path
 
@@ -13,6 +12,7 @@ from temporalio import activity
 from workflows.videogen.gcp import GoogleCloudStorage
 from workflows.videogen.llm import GoogleGemini
 from workflows.videogen.schema import Scene
+from workflows.videogen.settings import video_gen_settings
 from workflows.videogen.vgm import GoogleVeo2
 from workflows.videogen.video import VideoEditor
 
@@ -64,7 +64,7 @@ class VideoGenerationActivities:
     """
 
     def __init__(self):
-        self._google_api_key = os.getenv("GOOGLE_API_KEY")
+        self._google_api_key = video_gen_settings.GOOGLE_API_KEY
 
     @activity.defn
     async def create_scenes(self, arg: CreateScenesInput) -> list[Scene]:
