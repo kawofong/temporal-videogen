@@ -47,7 +47,6 @@ to install Python dependencies:
 
 ## TODO
 
-* Parallelize video generation
 * Experiment using structlog as workflow logger
 * Generate test videos (e.g. rainbow color)
 * Generate tests that mock activities to test workflows end-to-end
