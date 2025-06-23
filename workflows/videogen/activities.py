@@ -5,7 +5,6 @@ Video generation activities.
 import tempfile
 from pathlib import Path
 
-from moviepy import VideoFileClip
 from pydantic import BaseModel, Field
 from temporalio import activity
 
@@ -33,15 +32,8 @@ class GenerateVideoForSceneInput(BaseModel):
     current_scene: Scene = Field(
         description="The current scene to generate a video for."
     )
-    previous_video_path: Path | None = Field(
-        description="File path to previous video in the sequence.",
-        default=None,
-    )
-    staging_directory: Path = Field(
-        description="The path to the staging directory.",
-    )
-    output_path: Path = Field(
-        description="The path to the output video.",
+    gcs_staging_directory: str = Field(
+        description="The path to the staging directory in Google Cloud Storage.",
     )
 
 
@@ -50,11 +42,11 @@ class MergeVideosInput(BaseModel):
     Merge Videos Input.
     """
 
-    video_paths: list[Path] = Field(
+    gcs_video_paths: list[str] = Field(
         description="The paths of the videos to merge.",
     )
-    output_path: Path = Field(
-        description="The path of the output video.",
+    gcs_staging_directory: str = Field(
+        description="The path to the staging directory in Google Cloud Storage.",
     )
 
 
@@ -79,16 +71,16 @@ class VideoGenerationActivities:
 You are a creative AI agent that transforms user input into cinematic movie scenes. Your task is to take any concept, story, or idea and convert it into a compelling visual narrative with dramatic flair and artistic vision.
 
 # Requirements:
-* Create exactly 1-5 scenes that tell a complete story with a clear beginning and satisfying ending
-* Each scene must be 5-8 seconds long
+* Create exactly 3-8 scenes that tell a complete story with a clear beginning and satisfying ending
+* Each scene must be 5 seconds long
 * NO overlay text or written words should appear in any scene
 * For each scene, provide detailed camera angle and lighting descriptions
 * Embrace bold creativity - think like a visionary director pushing artistic boundaries
 
 # Scene Structure:
-* Scene 1 (Opening): Establish the story
-* Scene 2-3 (Development): [Optional] Build tension
-* Scene 4-5 (Resolution): Deliver a powerful, memorable conclusion
+* Opening: Establish the story
+* Development: Build tension
+* Resolution: Deliver a powerful, memorable conclusion
 
 # Technical Specifications:
 * For each scene, specify:
@@ -160,9 +152,9 @@ Use the parameters above to generate an optimized prompt for Veo 2.
         return optimized_vgm_prompt
 
     @activity.defn
-    async def generate_video_for_scene(self, arg: GenerateVideoForSceneInput) -> Path:
+    async def generate_video_for_scene(self, arg: GenerateVideoForSceneInput) -> str:
         """
-        Generate a video for a scene.
+        Generate a video for a scene and store it in Google Cloud Storage.
         """
         activity.logger.info("Generating a video for the scene. arg=%s", arg)
         vgm_prompt = arg.current_scene.vgm_prompt
@@ -172,75 +164,58 @@ Use the parameters above to generate an optimized prompt for Veo 2.
 The camera uses {arg.current_scene.camera_angle}.
 The lighting is {arg.current_scene.lighting}.
 """
-        # Save the last frame of the previous video as a reference image for VGM.
-        if arg.previous_video_path is not None:
-            # Use moviepy to extract the last frame of the previous video.
-            video = VideoFileClip(arg.previous_video_path)
-            image_path = (
-                arg.staging_directory
-                / f"scene_{int(arg.current_scene.sequence_number-1)}_last_frame.png"
+
+        video_name = f"scene_{arg.current_scene.sequence_number}.mp4"
+        gcs_destination_path = f"{arg.gcs_staging_directory}/{video_name}"
+        # Generate the video in a local temporary directory, then upload it to Google Cloud Storage.
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / video_name
+            output_path = await self._vgm.generate_video(
+                prompt=vgm_prompt,
+                output_path=output_path,
             )
-            video.save_frame(image_path, t=float(video.duration - 0.01))
-        else:
-            image_path = None
+            GoogleCloudStorage.upload_file(
+                bucket_name=video_gen_settings.GCS_BUCKET_NAME,
+                file_path=output_path,
+                destination_path=gcs_destination_path,
+            )
 
-        output_path = await self._vgm.generate_video(
-            prompt=vgm_prompt,
-            output_path=arg.output_path,
-            image_path=image_path,
-        )
-
-        return output_path
+        return gcs_destination_path
 
     @activity.defn
-    async def merge_videos(self, arg: MergeVideosInput) -> Path:
+    async def merge_videos(self, arg: MergeVideosInput) -> str:
         """
-        Merge videos into a single video.
+        Merge videos into a single video and store it in Google Cloud Storage.
         """
         activity.logger.info("Merging videos into a single video. arg=%s", arg)
 
-        return VideoEditor.merge_videos(
-            video_paths=arg.video_paths, output_path=arg.output_path
-        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            downloaded_video_paths: list[Path] = []
+            # Download the videos from Google Cloud Storage.
+            for gcs_name in arg.gcs_video_paths:
+                video_name = Path(gcs_name).name
+                downloaded_video_path = temp_dir / video_name
+                GoogleCloudStorage.download_blob(
+                    bucket_name=video_gen_settings.GCS_BUCKET_NAME,
+                    source_blob_name=gcs_name,
+                    destination_file_path=downloaded_video_path,
+                )
+                downloaded_video_paths.append(downloaded_video_path)
 
+            # Merge the videos into a single video.
+            video_name = "full_video.mp4"
+            gcs_destination_name = f"{arg.gcs_staging_directory}/{video_name}"
+            full_video_output_path = temp_dir / video_name
+            VideoEditor.merge_videos(
+                video_paths=downloaded_video_paths, output_path=full_video_output_path
+            )
 
-@activity.defn
-def create_video_directory() -> Path:
-    """
-    Create a staging video directory.
-    """
-    # use tempdir to create a unique directory
-    output_path = Path(tempfile.mkdtemp())
-    output_path.mkdir(parents=True, exist_ok=True)
-    return output_path
+            # Upload the merged video to Google Cloud Storage.
+            GoogleCloudStorage.upload_file(
+                bucket_name=video_gen_settings.GCS_BUCKET_NAME,
+                file_path=full_video_output_path,
+                destination_path=gcs_destination_name,
+            )
 
-
-class UploadFileInput(BaseModel):
-    """
-    Upload File Input.
-    """
-
-    bucket_name: str = Field(
-        description="The name of the bucket to upload the file to."
-    )
-    source_path: Path = Field(description="The path of the file to upload.")
-    destination_path: str = Field(
-        description="The path of the file stored in the bucket."
-    )
-
-
-class GoogleCloudActivities:
-    """
-    Google Cloud activities.
-    """
-
-    @activity.defn
-    def upload_file(self, arg: UploadFileInput) -> None:
-        """
-        Upload a file to Google Cloud Storage.
-        """
-        GoogleCloudStorage.upload_file(
-            bucket_name=arg.bucket_name,
-            file_path=arg.source_path,
-            destination_path=arg.destination_path,
-        )
+        return gcs_destination_name

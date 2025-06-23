@@ -19,25 +19,19 @@ class GoogleCloudStorage:
         cls, bucket_name: str, file_path: Path, destination_path: str
     ) -> None:
         """
-        Upload a file to Google Cloud Storage.
+        Upload a blob to Google Cloud Storage.
         """
         cls._client.bucket(bucket_name).blob(destination_path).upload_from_filename(
             file_path
         )
 
-
-def test_upload_file():
-    """
-    Test the upload_file function.
-    """
-    GoogleCloudStorage.upload_file(
-        bucket_name="kawo-temporal-videos-bucket",
-        file_path=Path(
-            "/Users/kawofong/Workspace/temporal-videos/build/merged_video.mp4"
-        ),
-        destination_path="merged_video.mp4",
-    )
-
-
-if __name__ == "__main__":
-    test_upload_file()
+    @classmethod
+    def download_blob(
+        cls, bucket_name: str, source_blob_name: str, destination_file_path: Path
+    ) -> None:
+        """
+        Download a blob from Google Cloud Storage.
+        """
+        cls._client.bucket(bucket_name).blob(source_blob_name).download_to_filename(
+            destination_file_path
+        )

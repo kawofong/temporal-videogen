@@ -61,7 +61,7 @@ class GoogleVeo2(BaseVideoGenerationModel):
             person_generation="allow_adult",  # "dont_allow" or "allow_adult"
             aspect_ratio="16:9",  # "16:9" or "9:16"
             number_of_videos=1,
-            duration_seconds=8,
+            duration_seconds=5,
             negative_prompt="text,text overlay,text on screen",
         )
 
