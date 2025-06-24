@@ -2,6 +2,10 @@
 
 A Temporal Workflow that generates video clips based on user prompt, powered by Google Gemini and Veo 2.
 
+https://github.com/user-attachments/assets/66ba8579-3cf0-495a-a98e-81df47e3623b
+
+> This video is generated with the prompt `Mermaids, dolphins, and octopuses performing for a circus performance.`
+
 ## Pre-requisites
 
 - [uv](https://docs.astral.sh/uv/getting-started/installation/)
