@@ -169,7 +169,7 @@ async def main():
         result = await client.execute_workflow(
             VideoGenerationWorkflow.run,
             VideoGenerationWorkflowInput(
-                user_prompt="Mermaids, dolphins, and octopuses performing for a circus performance."
+                user_prompt="Paperclips organize themselves into formation at dawn. Staplers engage in synchronized jumping competitions across desks. Rubber bands form a complex web to catch falling pens in slow motion."
             ),
             id=f"video-gen-workflow-{uuid.uuid4()}",
             task_queue=TASK_QUEUE,

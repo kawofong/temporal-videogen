@@ -3,15 +3,15 @@ Video generation model.
 """
 
 import asyncio
+import logging
 from abc import ABC, abstractmethod
 from datetime import datetime
 from pathlib import Path
 
-import structlog
 from google import genai
 from google.genai.types import GenerateVideosConfig, Image
 
-logger = structlog.get_logger()
+logger = logging.getLogger(__name__)
 
 
 class BaseVideoGenerationModel(ABC):
@@ -37,10 +37,7 @@ class GoogleVeo2(BaseVideoGenerationModel):
     def __init__(self, api_key: str, model_name: str = "veo-2.0-generate-001"):
         self._client = genai.Client(api_key=api_key)
         self._model_name = model_name
-        logger.info(
-            "GoogleVeo2 initialized",
-            model_name=model_name,
-        )
+        logger.info("GoogleVeo2 initialized. model_name=%s", model_name)
 
     async def generate_video(
         self, prompt: str, output_path: Path, image_path: Path | None = None
@@ -51,10 +48,9 @@ class GoogleVeo2(BaseVideoGenerationModel):
         start_time = datetime.now()
 
         logger.info(
-            "Starting video generation",
-            output_path=str(output_path),
-            image_provided=image_path is not None,
-            start_time=start_time,
+            "Starting video generation. output_path=%s. start_time=%s",
+            str(output_path),
+            start_time,
         )
 
         default_veo2_config = GenerateVideosConfig(
@@ -92,9 +88,8 @@ class GoogleVeo2(BaseVideoGenerationModel):
             operation = self._client.operations.get(operation)
 
             logger.debug(
-                "Waiting for video generation to complete",
-                wait_count=wait_count,
-                operation_done=operation.done,
+                "Waiting for video generation to complete. wait_count=%s.",
+                wait_count,
             )
 
         if operation.response.generated_videos is None:
@@ -104,9 +99,9 @@ class GoogleVeo2(BaseVideoGenerationModel):
             )
 
         logger.info(
-            "Video generation operation completed",
-            elapsed_time=datetime.now() - start_time,
-            video_count=len(operation.response.generated_videos),
+            "Video generation operation completed. elapsed_time=%s. video_count=%s",
+            datetime.now() - start_time,
+            len(operation.response.generated_videos),
         )
 
         # Given that default_veo2_config is set to generate 1 video,
@@ -116,8 +111,8 @@ class GoogleVeo2(BaseVideoGenerationModel):
         video.video.save(output_path)
 
         logger.info(
-            "Video generation completed successfully",
-            output_paths=output_path,
+            "Video generation completed successfully. output_path=%s",
+            output_path,
         )
 
         return output_path
