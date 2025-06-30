@@ -141,9 +141,7 @@ async def main():
     """
     Main function.
     """
-    import logging
-
-    logging.basicConfig(level=logging.INFO)
+    from workflows.videogen.constants import TASK_QUEUE
 
     # Start client
     client = await Client.connect(
@@ -151,30 +149,15 @@ async def main():
         data_converter=pydantic_data_converter,
     )
 
-    TASK_QUEUE = "video-gen-task-queue"
-    # Run a worker for the workflow
-    video_generation_activities = VideoGenerationActivities()
-    async with Worker(
-        client,
+    result = await client.execute_workflow(
+        VideoGenerationWorkflow.run,
+        VideoGenerationWorkflowInput(
+            user_prompt="A street magician performs for crowds in a busy plaza, notices his tricks are becoming real and causing chaos."
+        ),
+        id=f"video-gen-workflow-{uuid.uuid4()}",
         task_queue=TASK_QUEUE,
-        workflows=[VideoGenerationWorkflow],
-        activities=[
-            video_generation_activities.create_scenes,
-            video_generation_activities.generate_vgm_prompt,
-            video_generation_activities.generate_video_for_scene,
-            video_generation_activities.merge_videos,
-        ],
-        activity_executor=ThreadPoolExecutor(max_workers=5),
-    ):
-        result = await client.execute_workflow(
-            VideoGenerationWorkflow.run,
-            VideoGenerationWorkflowInput(
-                user_prompt="Paperclips organize themselves into formation at dawn. Staplers engage in synchronized jumping competitions across desks. Rubber bands form a complex web to catch falling pens in slow motion."
-            ),
-            id=f"video-gen-workflow-{uuid.uuid4()}",
-            task_queue=TASK_QUEUE,
-        )
-        print(f"Result: {result}")
+    )
+    print(f"Result: {result}")
 
 
 if __name__ == "__main__":
