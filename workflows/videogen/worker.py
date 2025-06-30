@@ -12,7 +12,7 @@ from temporalio.worker import Worker
 
 from workflows.videogen.activities import VideoGenerationActivities
 from workflows.videogen.constants import TASK_QUEUE
-from workflows.videogen.videogen import VideoGenerationWorkflow
+from workflows.videogen.workflow import VideoGenerationWorkflow
 
 logging.basicConfig(level=logging.INFO)
 

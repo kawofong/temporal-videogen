@@ -4,13 +4,11 @@ A video generation workflow.
 
 import asyncio
 import uuid
-from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 
 from temporalio import workflow
 from temporalio.client import Client
 from temporalio.contrib.pydantic import pydantic_data_converter
-from temporalio.worker import Worker
 
 with workflow.unsafe.imports_passed_through():
     from pydantic import BaseModel, Field

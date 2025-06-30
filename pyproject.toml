@@ -20,4 +20,4 @@ script = "workflows.videogen.worker"
 
 [tool.poe.tasks.run_workflow]
 help = "Run the VideoGen workflow."
-script = "workflows.videogen.videogen"
+script = "workflows.videogen.workflow"
