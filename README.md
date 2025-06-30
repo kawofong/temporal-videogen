@@ -43,14 +43,14 @@ to install Python dependencies:
     temporal server start-dev
     ```
 
-1. Run the workflow.
+1. In a new terminal, run the Worker.
 
     ```bash
-    uv run -m workflows.videogen.videogen
+    uv run poe run_worker
     ```
 
-## TODO
+1. In a new terminal, run the Workflow.
 
-* Generate test videos (e.g. rainbow color)
-* Generate tests that mock activities to test workflows end-to-end
-* Write some tests (goal: > 80% test coverage)
+    ```bash
+    uv run poe run_workflow
+    ```
