@@ -13,7 +13,7 @@ class VideoGenSettings(BaseSettings):
 
     GOOGLE_API_KEY: str = Field(description="The API key for Google language models.")
     GCS_BUCKET_NAME: str = Field(
-        description="The name of the Google Cloud Storage bucket.",
+        description="The name of the Google Cloud Storage bucket to store generated videos.",
         default="kawo-temporal-videos-bucket",
     )
 

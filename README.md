@@ -37,6 +37,9 @@ to install Python dependencies:
     cp .envrc.example .envrc
     ```
 
+    > You will need a Google Cloud Storage bucket to store the generated videos.
+    > To create a bucket, see https://cloud.google.com/storage/docs/creating-buckets
+
 1. Start Temporal locally.
 
     ```bash
