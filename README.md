@@ -31,6 +31,14 @@ to install Python dependencies:
     > Your Google Cloud credentials should be cached to your local file system.
     > Hence, you should not have to authenticate every time you are running this solution.
 
+1. If this is your first time using the Google Cloud CLI, you may have to configure your Google Cloud CLI
+to use your Google Cloud project.
+
+    ```bash
+    gcloud auth application-default set-quota-project <your-gcp-project>
+    gcloud config set project <your-gcp-project>
+    ```
+
 1. Copy `.envrc.example` and populate values:
 
     ```bash

@@ -150,7 +150,7 @@ async def main():
     result = await client.execute_workflow(
         VideoGenerationWorkflow.run,
         VideoGenerationWorkflowInput(
-            user_prompt="A street magician performs for crowds in a busy plaza, notices his tricks are becoming real and causing chaos."
+            user_prompt="An weathered explorer of Pacific Island descent ventures deep into an uncharted jungle. He breaches through a waterfall entrance to discover a hidden valley of towering Brachiosaurus and Triceratops."
         ),
         id=f"video-gen-workflow-{uuid.uuid4()}",
         task_queue=TASK_QUEUE,
